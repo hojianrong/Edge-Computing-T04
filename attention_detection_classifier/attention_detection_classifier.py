@@ -32,7 +32,7 @@ def extract_pose_direction(input: list) -> list:
     return output
 
 
-def compute_attentiveness(predictions: list) -> (float, int, int):
+def compute_attention_levels(predictions: list) -> (float, int, int):
     positive = predictions.count(1)
     negative = predictions.count(0)
 
@@ -43,7 +43,7 @@ def update_database(record: dict):
     pass
 
 
-class AttentivenessClassifier:
+class AttentionDetectionClassifier:
     def __init__(self, model_path: str):
         try:
             self.model = pickle.load(open(model_path, "rb"))
@@ -62,9 +62,9 @@ if __name__ == "__main__":
     y = data["label"]
     x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=33)
 
-    classifier = AttentivenessClassifier("rf_model.sav")
+    classifier = AttentionDetectionClassifier("rf_model.sav")
     y_pred = classifier.predict(x_test)
-    att_ratio, pos_count, neg_count = compute_attentiveness(y_pred)
+    att_ratio, pos_count, neg_count = compute_attention_levels(y_pred)
 
     print(f"Number of 1s: {pos_count}")
     print(f"Number of 0s: {neg_count}")
