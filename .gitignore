@@ -3,6 +3,7 @@ env
 .idea
 web-ui/node_modules
 web-ui/.env
+web-ui/.env.local
 web-ui/.DS_Store
 web-ui/build
 web-ui/.next
