@@ -1,3 +1,11 @@
 env
 .ipynb_checkpoints
 .idea
+web-ui/node_modules
+web-ui/.env
+web-ui/.DS_Store
+web-ui/build
+web-ui/.next
+web-ui/.eslintcache
+web-ui/.pnp
+
