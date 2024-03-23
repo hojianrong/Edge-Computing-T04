@@ -1,3 +1,4 @@
+"""Libraries for HeadPoseEstimation"""
 import argparse
 import os
 import cv2
@@ -10,6 +11,13 @@ from face_detection import FaceDetector
 from mark_detection import MarkDetector
 from pose_estimation import PoseEstimator
 from utils import refine
+
+"""Libraries for Classifier"""
+import warnings
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import pickle
+from Classifier.attention_detection_classifier import *
 
 """
 If Pose_x is less than -10 = "Looking Downards"
@@ -93,7 +101,7 @@ class FaceInference:
         
         return frame_width, frame_height
 
-    def Inference(self, imgs_dir, save_dir):
+    def Model_Inference(self, imgs_dir, save_dir):
         # Perform inference on saved frames
         # Dictionary to save the timestamp / frame number & bounding box coordinates
         image_data = {}
@@ -136,10 +144,6 @@ class FaceInference:
                 
                     # Extract rotation vector x and y components
                     rvec = pose[0]
-               
-                    #rotation_x = pose[0][0][0]  # Extracting x component from the first array
-                    #rotation_y = pose[0][1][0]  # Extracting y component from the first array
-                    #rotation_z = pose[0][2][0]  # Extracting z component from the first array
                 
                     # Call the function to extract Euler angles from rotation vectors
                     rot_params = self.pose_estimator.rot_params_rv(rvec)
@@ -152,8 +156,8 @@ class FaceInference:
                     ## Add to dictionary
                     image_data[img_name] = face_coordinates  # Store only essential rotation angles
                 
-                    # Visualize the estimated pose on the image
-                    self.pose_estimator.visualize(image, pose)
+                    # Visualize the estimated pose on the image (Optional)
+                    # self.pose_estimator.visualize(image, pose)
                 
                     # Measure the time after processing the frame
                     frame_end_time = time.time()
@@ -161,31 +165,79 @@ class FaceInference:
                     # Calculate and print the inference time for this frame
                     inference_time = frame_end_time - frame_start_time
                     print(f"Inference time: {inference_time:.6f} seconds")
-                
-                    # Save the new predicted image 
-                    cv2.imwrite(os.path.join(save_dir, f"{img_name}_predicted.jpg"), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-
-        print("Inference on saved frames completed.")
-
-        # Save the image data dictionary to a JSON file
-        json_file_path = os.path.join(save_dir, "bounding_box_data.json")
-        with open(json_file_path, 'w') as json_file:
-            json.dump(image_data, json_file)
+                    
+                    # Save the new predicted image (Optional)
+                    # cv2.imwrite(os.path.join(save_dir, f"{img_name}_predicted.jpg"), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+                print("Inference on saved frames completed.")
         
-        print("Saving to JSON format completed.")
+        print("Performing Model Predictions")
+        # Initialize Classifier 
+        classifier = AttentionDetectionClassifier("Classifier/rf_model.sav")
+        
+        # Extract pose from dictionary
+        x_test = extract_pose_direction(image_data)
+        print(x_test)
+        
+        # Dict to store attentivenes
+        attentiveness_data = {}
+        aggregated_attentiveness_data = {}
+                    
+        # Predict attention score and save to dict
+        for img, pose in x_test.items():
+            y_pred = classifier.predict(pose)
+            # Obtain positive / negative results
+            att_ratio, pos_count, neg_count = compute_attention_levels(y_pred)
+            attentiveness_data[img] = (att_ratio, pos_count, neg_count)
+            
+        # Iterate over the original attentiveness_data dictionary
+        for img, metrics in attentiveness_data.items():
+            # Extract the timestamp from the image name 
+            timestamp = img.split('_')[2]
+            # print(timestamp)
+            # Check if the timestamp already exists in the aggregated_attentiveness_data dictionary
+            if timestamp not in aggregated_attentiveness_data:
+            # If it doesn't exist, initialize it with the current metrics
+                aggregated_attentiveness_data[timestamp] = {'att_ratio': metrics[0], 'pos_count': metrics[1], 'neg_count': metrics[2], 'count': 1}
+            else:
+                # If it exists, update the aggregated metrics with the current metrics
+                aggregated_attentiveness_data[timestamp]['att_ratio'] += metrics[0]
+                aggregated_attentiveness_data[timestamp]['pos_count'] += metrics[1]
+                aggregated_attentiveness_data[timestamp]['neg_count'] += metrics[2]
+                aggregated_attentiveness_data[timestamp]['count'] += 1
 
+        # Compute the average of the attentiveness metrics for each timestamp
+        for timestamp, metrics in aggregated_attentiveness_data.items():
+            metrics['att_ratio'] /= metrics['count']
+            metrics['pos_count'] /= metrics['count']
+            metrics['neg_count'] /= metrics['count']
+            
+        return aggregated_attentiveness_data
+            
+
+    def SaveToJSON(self, attentiveness_data, save_dir):
+        """Code to save to JSON file"""
+        # Save the image data dictionary to a JSON file
+        json_file_path = os.path.join(save_dir, "output.json")
+        with open(json_file_path, 'w') as json_file:
+            json.dump(attentiveness_data, json_file)
+            print("Saving to JSON format completed.")
+        
 
 def main():
     save_dir = "Results"  # Directory to save the detected faces and bounding boxes 
     imgs_dir = "Images"  # Directory containing images for inference
     # Get the frame size. This will be used by the following detectors.
-    capture_interval = 0.1 # Estimated 10 FPS
+    capture_interval = 0.5 # Estimated 3-4 FPS
 
-    
-    face_inference = FaceInference()
-    frame_width, frame_height = face_inference.Preprocess_Store_Image(save_dir, imgs_dir, capture_interval)
+    face_inference = FaceInference() 
+    # Preprocess and save the frames in the folder
+    frame_width, frame_height = face_inference.Preprocess_Store_Image(save_dir, imgs_dir, capture_interval) 
+    # Initialize the Pose Estimator with the given frame width / frame height
     face_inference.LoadPoseEstimator(frame_width, frame_height)
-    face_inference.Inference(imgs_dir, save_dir)
+    # Return data after inferencing 
+    attentiveness_data = face_inference.Model_Inference(imgs_dir, save_dir)
+    # Save to JSON format (Frame : Att, Pos, Neg, Count)
+    face_inference.SaveToJSON(attentiveness_data, save_dir)
     
     
 

@@ -31,6 +31,8 @@ class MarkDetector:
         """
         rgbs = []
         for img in bgrs:
+            if img is None or img.size == 0:  # Check if the image is empty or has invalid dimensions
+                continue  # Skip processing empty images
             img = cv2.resize(img, (self._input_size, self._input_size))
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             rgbs.append(img)
@@ -38,7 +40,7 @@ class MarkDetector:
         return rgbs
 
     def detect(self, images):
-        """Detect facial marks from an face image.
+        """Detect facial marks from a list of face images.
 
         Args:
             images: a list of face images.
@@ -46,9 +48,17 @@ class MarkDetector:
         Returns:
             marks: the facial marks as a numpy array of shape [Batch, 68*2].
         """
-        inputs = self._preprocess(images)
-        marks = self.model.run(["dense_1"], {"image_input": inputs})
-        return np.array(marks)
+        all_marks = []
+        for image in images:
+            try:
+                inputs = self._preprocess([image])
+                marks = self.model.run(["dense_1"], {"image_input": inputs})
+                all_marks.append(np.array(marks))
+            except Exception as e:
+                print(f"Error processing image: {str(e)}")
+                continue  # Skip processing this image if an error occurs
+        
+        return np.array(all_marks)
 
     def visualize(self, image, marks, color=(255, 255, 255)):
         """Draw mark points on image"""
